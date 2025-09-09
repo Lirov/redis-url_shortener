@@ -21,6 +21,8 @@ jobs:
     env:
       REDIS_URL: redis://localhost:6379/0
       BASE_URL: http://localhost:8000
+      JWT_SECRET: test-secret
+      JWT_EXPIRES_MINUTES: 60
 
     steps:
       - uses: actions/checkout@v4
