@@ -5,8 +5,116 @@ from typing import Optional, Tuple
 import redis
 from .config import settings
 
-_pool = redis.ConnectionPool.from_url(str(settings.REDIS_URL), decode_responses=True)
-r = redis.Redis(connection_pool=_pool)
+# Try to connect to Redis, fall back to mock if not available
+try:
+    _pool = redis.ConnectionPool.from_url(str(settings.REDIS_URL), decode_responses=True)
+    r = redis.Redis(connection_pool=_pool)
+    # Test connection
+    r.ping()
+    print("✅ Connected to Redis")
+except redis.exceptions.ConnectionError:
+    print("⚠️  Redis not available, using in-memory storage for development")
+    # Mock Redis implementation for development
+    class MockRedis:
+        def __init__(self):
+            self.data = {}
+            self.expires = {}
+            self.hashes = {}
+            self.sorted_sets = {}
+        
+        def exists(self, key):
+            return key in self.data
+        
+        def set(self, key, value):
+            self.data[key] = value
+        
+        def get(self, key):
+            return self.data.get(key)
+        
+        def hset(self, key, mapping=None, **kwargs):
+            if key not in self.hashes:
+                self.hashes[key] = {}
+            if mapping:
+                self.hashes[key].update(mapping)
+            self.hashes[key].update(kwargs)
+        
+        def hgetall(self, key):
+            return self.hashes.get(key, {})
+        
+        def setnx(self, key, value):
+            if key not in self.data:
+                self.data[key] = value
+                return True
+            return False
+        
+        def expire(self, key, seconds):
+            self.expires[key] = time.time() + seconds
+        
+        def ttl(self, key):
+            if key in self.expires:
+                remaining = self.expires[key] - time.time()
+                return int(remaining) if remaining > 0 else -2
+            return -1
+        
+        def incr(self, key):
+            current = int(self.data.get(key, 0))
+            new_val = current + 1
+            self.data[key] = str(new_val)
+            return new_val
+        
+        def zadd(self, key, mapping):
+            if key not in self.sorted_sets:
+                self.sorted_sets[key] = {}
+            self.sorted_sets[key].update(mapping)
+        
+        def zrevrange(self, key, start, end, withscores=False):
+            if key not in self.sorted_sets:
+                return []
+            items = sorted(self.sorted_sets[key].items(), key=lambda x: x[1], reverse=True)
+            if withscores:
+                return items[start:end+1]
+            return [item[0] for item in items[start:end+1]]
+        
+        def pipeline(self):
+            return MockPipeline(self)
+        
+        def ping(self):
+            return True
+    
+    class MockPipeline:
+        def __init__(self, redis):
+            self.redis = redis
+            self.commands = []
+        
+        def set(self, key, value):
+            self.commands.append(('set', key, value))
+            return self
+        
+        def hset(self, key, mapping=None, **kwargs):
+            self.commands.append(('hset', key, mapping, kwargs))
+            return self
+        
+        def setnx(self, key, value):
+            self.commands.append(('setnx', key, value))
+            return self
+        
+        def expire(self, key, seconds):
+            self.commands.append(('expire', key, seconds))
+            return self
+        
+        def execute(self):
+            for cmd in self.commands:
+                if cmd[0] == 'set':
+                    self.redis.set(cmd[1], cmd[2])
+                elif cmd[0] == 'hset':
+                    self.redis.hset(cmd[1], mapping=cmd[2], **cmd[3])
+                elif cmd[0] == 'setnx':
+                    self.redis.setnx(cmd[1], cmd[2])
+                elif cmd[0] == 'expire':
+                    self.redis.expire(cmd[1], cmd[2])
+            self.commands = []
+    
+    r = MockRedis()
 
 ALPHABET = string.ascii_letters + string.digits
 
