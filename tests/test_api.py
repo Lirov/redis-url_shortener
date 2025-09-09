@@ -1,16 +1,17 @@
 import os
 import sys
 
-import pytest
 from fastapi.testclient import TestClient
 
 # Add the project root to Python path
+
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.main import app
 
 # Use TestClient for testing (no server needed)
+
 
 client = TestClient(app)
 
