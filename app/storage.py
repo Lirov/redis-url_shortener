@@ -71,9 +71,14 @@ except redis.exceptions.ConnectionError:
             if key not in self.sorted_sets:
                 return []
             items = sorted(self.sorted_sets[key].items(), key=lambda x: x[1], reverse=True)
+            if end == -1:
+                # -1 means get all items from start to end
+                selected_items = items[start:]
+            else:
+                selected_items = items[start:end+1]
             if withscores:
-                return items[start:end+1]
-            return [item[0] for item in items[start:end+1]]
+                return selected_items
+            return [item[0] for item in selected_items]
         
         def pipeline(self):
             return MockPipeline(self)
