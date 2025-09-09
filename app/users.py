@@ -1,4 +1,3 @@
-from typing import Optional
 from passlib.context import CryptContext
 import redis
 from .config import settings
